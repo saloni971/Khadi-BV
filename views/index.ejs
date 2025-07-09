@@ -1,208 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KhadiBV</title>
-    <link rel="icon" type="image/x-icon" href="/public/images/logo4.png" />
-    <link rel="stylesheet" href="/css/style.css" />
-    <link rel="stylesheet" href="/public/css/uniform.css" />
-    <link rel="stylesheet" href="/public/css/kurti.css" />
-    <link
-      href="https://fonts.googleapis.com/icon?family=Material+Icons"
-      rel="stylesheet"
-    />
-
-  </head>
-  <body>
-    <header>
-      <div class="logo">
-          <img
-              src="/public/images/logo4.png"
-              alt="Khadi Store Logo"
-              height="1%"
-              width="1%"
-          />
-      </div>
-      <div class="search-bar">
-          <input
-              type="text"
-              placeholder="Search for products, categories, or brands"
-          />
-          <span class="material-icons" id="search-icon" title="Search">search</span>
-      </div>
-      <div id="search-results"></div>
-      <nav>
-          <ul>
-              <li><a href="/">Home</a></li>
-              <li><a href="#categories">Shop</a></li>
-              <li><a href="/about">About</a></li>
-              <li><a href="#contact" id="contact-link">Contact</a></li>
-          </ul>
-      </nav>
-      <div class="icons">
-          <span class="material-icons" id="cart-icon" title="Cart">
-              <a href="/cart">shopping_cart</a>
-          </span>
-          <span class="material-icons" id="wishlist-icon" title="Wishlist">
-              <a href="/wishlist">favorite_border</a>
-          </span>
-  
-          <% if (user) { %>
-          <!-- User is logged in -->
-          <div class="profile-dropdown">
-              <span class="material-icons" id="profile-icon" title="Profile">
-                  account_circle
-              </span>
-              <div class="dropdown-content">
-                  <p>Welcome <%= user.name %>!</p>
-                  <a href="/settings">Settings</a>
-                  <a href="/myorders">My Orders</a>
-                  <a href="/logout">Logout</a>
-              </div>
-          </div>
-          <% } else { %>
-          <!-- User is not logged in -->
-          <span class="material-icons" id="login-icon" title="Login/Signup">
-              <a href="/signup">account_circle</a>
-          </span>
-          <% } %>
-  
-          <span class="material-icons" id="notifications-icon" title="Notifications">
-              notifications
-          </span>
-  
-          <!-- Notification Dropdown -->
-          <div class="notification-dropdown" id="notification-dropdown" style="display: none;">
-              <ul id="notification-list"></ul>
-          </div>
-  
-          <span class="material-icons" id="chatbot-icon" title="Chatbox">chat</span>
-      </div>
-  </header>
-    <section id="gallery">
-      <div class="gallery-container">
-        <button class="carousel-control prev" onclick="prevSlide()">&#10094;</button>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sidebar Dropdown</title>
+    <link rel="stylesheet" href="/css/admin-panel.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="logo-container">
+                <img src="/images/logo4.png" alt="KhadiBv.IN Logo">
+            </div>
+            <h2>Admin Panel</h2><br>
+            <ul>
+                <li><a href="#">Dashboard</a></li>
+                <li><a href="/view-customers">Customers</a></li>
+                <li class="dropdown">
+                    <a href="#">Product ▾</a>
+                    <ul class="dropdown-menu">
+                        <li><a href="/insert-product">Insert Product</a></li>
+                        <li><a href="/view-products">View Product</a></li>
+                    </ul>
+                </li>
+                <li class="dropdown">
+                    <a href="#">Category ▾</a>
+                    <ul class="dropdown-menu">
+                        <li><a href="/insert-category">Insert Category</a></li>
+                        <li><a href="/view-category">View Category</a></li>
+                    </ul>
+                </li>
+                <li><a href="/admin/orders">Orders</a></li>
+                <li><a href="/admin/custom-orders">Customized Orders</a></li> <!-- Added Customized Orders -->
+                <li><a href="/payments">Payment</a></li>
+                <li><a href="#">Settings</a></li>
+            </ul>
+        </nav>
+        <main class="main-content">
+            <header>
+                <h1>Dashboard</h1>
+                <div class="welcome-text">Welcome, Admin</div>
+            </header>
+        </main>
+    </div>
+    <div class="main-content1">
+        <div class="top-cards">
+            <div class="card">Products: <strong><%= productCount %></strong></div>
+            <div class="card">Users: <strong><%= userCount %></strong></div>
+            <div class="card">Orders: <strong><%= orderCount %></strong></div>
     
-        <div class="gallery-wrapper">
-          <div class="ad-card"><img src="/public/images/ad1.jpg" alt="Ad 1" /></div>
-          <div class="ad-card"><img src="/public/images/ad2.jpg" alt="Ad 2" /></div>
-          <div class="ad-card"><img src="/public/images/ad3.jpg" alt="Ad 3" /></div>
-          <div class="ad-card"><img src="/public/images/ad4.jpg" alt="Ad 4" /></div>
-          <div class="ad-card"><img src="/public/images/ad5.jpg" alt="Ad 5" /></div>
+            <div class="card">Total Sales: <strong>₹<%= totalSales %></strong></div>
         </div>
-    
-        <button class="carousel-control next" onclick="nextSlide()">&#10095;</button>
-      </div>
-    </section>
-    
-
-    <section id="categories">
-      <h2>Our Collections</h2>
-      <div class="category-list">
-        <div class="category">
-          <a href="/uniforms" id="uniforms-category" title="khadi uniforms">
-            <img src="/public/images/uniform1.jpg" alt="Khadi Uniforms" />
-            <h3>Khadi Uniforms</h3>
-          </a>
-          <p>Comfortable and eco-friendly uniforms made from khadi.</p>
+        
+        <div class="charts-container">
+            <div class="charts">
+                <h3>User statistics</h3>
+                <canvas id="userStatsChart"></canvas>
+                <p class="user-stats-message"></p>
+            </div>
+            <div class="charts">
+                <h3>Product statistics</h3>
+                <canvas id="salesChart"></canvas>
+            </div>
+            <div class="categories">
+                <h3>Product Categories</h3>
+                <canvas id="categoryChart"></canvas>
+            </div>
         </div>
-        <div class="category">
-          <a href="/saree" id="saree-category" title="khadi sarees">
-          <img src="/public/images/saree.avif" alt="Khadi Sarees" />
-          <h3>Khadi Sarees</h3>
-        </a>
-          <p>Elegant, handwoven sarees for every occasion.</p>
-        </div>
-        <div class="category">
-          <a href="/kurti" id="kurti-category" title="khadi kurtis">
-            <img src="/public/images/kurta.jpg" alt="Khadi Kurtis" />
-            <h3>Khadi Kurtis</h3></a
-          >
-          <p>Traditional yet stylish kurtas and kurtis made with pure khadi.</p>
-        </div>
-        <div class="category">
-          <a href="/pants" id="pants-category" title="khadi pants">
-          <img src="/public/images/pants1.jpg" alt="Khadi Pants" />
-          <h3>Khadi Pants</h3></a>
-          <p>Stylish khadi pants for a comfortable fit.</p>
-        </div>
-        <div class="category">
-          <a href="/bedsheets" id="bedsheets-category" title="khadi bedsheets">
-          <img src="/public/images/bedsheets.jpg" alt="Khadi Bedsheets" />
-          <h3>Khadi Bedsheets</h3></a>
-          <p>Soft, sustainable bedsheets crafted from khadi.</p>
-        </div>
-        <div class="category">
-          <a href="/bags" id="bags-category" title="khadi bags">
-          <img src="/public/images/bags.webp" alt="Khadi Bags" />
-          <h3>Khadi Bags</h3></a>
-          <p>Eco-friendly bags made with love and khadi fabric.</p>
-        </div>
-        <div class="category">
-          <a href="/customization" id="customization-category" title="customization">
-          <img src="/public/images/custom.jpg" alt="Customizations" />
-          <h3>Customizations</h3></a>
-          <p>Personalized customizations to match your style.</p>
-        </div>
-      </div>
-    </section>
+    </div>
 
-    <section id="contact">
-      <h2>Contact Us</h2>
-      <div class="contact-details">
-        <p>
-          We're here to help! Reach out to us through any of the channels below.
-        </p>
-        <p>Email: support@khadistore.com</p>
-        <p>Phone: 9549728459</p>
-        <p>Address: 123 Khadi Street, Banasthali, India</p>
-      </div>
-    </section>
+    <!-- Pass userStats data to the frontend -->
+    <script>
+        const userStats = <%- userStats %>;
+        const salesStats = <%- salesStats %>;
+        const categoryStats = <%- categoryStats %>;
+    </script>
 
-    <section id="faq">
-      <h2>Frequently Asked Questions</h2>
-      <div class="faq-item">
-        <h3>How can I track my order?</h3>
-        <p>
-          You can track your order by visiting the
-          <a href="/views/tracking.html">Order Tracking</a> page.
-        </p>
-      </div>
-      <div class="faq-item">
-        <h3>What is your return policy?</h3>
-        <p>
-          We accept returns within 30 days of delivery. Visit our
-          <a href="/views/returns.html">Returns Policy</a> page for details.
-        </p>
-      </div>
-    </section>
-
-    <section id="contact-form">
-      <h2>Send Us a Message</h2>
-      <form id="contact-form">
-        <label for="name">Name</label>
-        <input type="text" id="name" name="name" required />
-
-        <label for="email">Email</label>
-        <input type="email" id="email" name="email" required />
-
-        <label for="message">Message</label>
-        <textarea id="message" name="message" rows="5" required></textarea>
-
-        <button type="submit">Send Message</button>
-      </form>
-    </section>
-
-    <footer>
-      <p>&copy; 2024 Khadi Store | Made with Passion and Khadi</p>
-    </footer>
-
-    <script src="/public/js/script.js"></script>
-    <script src="/public/js/script1.js"></script>
-    <script src="/public/js/cart.js"></script>
-    <script src="/public/js/wishlist.js"></script>
-    <script src="/public/js/search.js"></script>
-    <script src="/public/js/notification.js"></script>
-  </body>
+    <script src="/js/admin-panel.js"></script>
+</body>
 </html>
