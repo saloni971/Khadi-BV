@@ -1,575 +1,369 @@
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose");
-const Category = require("../models/category");
-const Product = require("../models/Product"); // Adjust the path as necessary
-const Cart=require("../models/Cart");
-const User = require('../models/user'); // Check the correct path
-const CartItem = require("../models/CartItem");
-const Wishlist = require('../models/Wishlist'); 
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
+const Product = require("../models/Product");
+const Category = require("../models/Category");
+const User = require("../models/User");
 const Order = require("../models/Order");
-const OrderItem = require("../models/OrderItem");
-const Notification = require('../models/Notification');
-const WishlistItem = require('../models/WishlistItem'); 
-const isAuthenticated=require("../middlewares/isAuthenticated");
-const { v4: uuidv4 } = require("uuid");
+const CustomOrder = require('../models/Customization'); 
+const Notification = require("../models/Notification");
 
 
- // Adjust the path based on your project structure
+// ✅ Define Upload Directory
+const uploadDir = path.join(__dirname, "../../public/images");
+console.log("Upload Directory:", uploadDir);
 
+// ✅ Ensure Directory Exists
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-
-// Home Route (No session check needed here, as it's a public page)
-router.get("/", (req, res) => {
-  res.render("index", { user: req.session.user || null });
-});
-router.post("/place-order", isAuthenticated, async (req, res) => {
-  try {
-      const { name, address, pincode, city, state, cartItems, paymentMethod } = req.body;
-      const userId = req.session.user?.id;
-
-      if (!name || !address || !pincode || !city || !state || !cartItems || cartItems.length === 0) {
-          return res.status(400).json({ success: false, message: "Missing required fields" });
-      }
-
-      if (!userId) {
-          return res.status(401).json({ success: false, message: "User not authenticated" });
-      }
-
-      console.log("Extracted User ID:", userId);
-      const objectUserId = new mongoose.Types.ObjectId(userId);
-      const orderID = uuidv4();
-
-      let totalAmount = 0; // ✅ Initialize total amount
-
-      // Check stock availability and compute total amount
-      for (const item of cartItems) {
-          const product = await Product.findById(item.productID);
-          if (!product) {
-              return res.status(404).json({ success: false, message: `Product not found: ${item.productID}` });
-          }
-          if (product.stock < item.quantity) {
-              return res.status(400).json({ success: false, message: `Not enough stock for product: ${product.name}` });
-          }
-
-          totalAmount += product.price * item.quantity; // ✅ Compute totalAmount correctly
-      }
-
-      // Create new order
-      const newOrder = new Order({
-          userId: objectUserId,
-          orderID,
-          name,
-          address,
-          pincode,
-          city,
-          state,
-          cartItems,
-          totalAmount,  // ✅ Now totalAmount is calculated dynamically
-          paymentMethod,
-          status: "Pending",
-      });
-
-      // Save the order
-      await newOrder.save();
-      console.log("Order saved successfully:", newOrder);
-
-      // Update product stock
-      for (const item of cartItems) {
-          await Product.findByIdAndUpdate(item.productID, {
-              $inc: { stock: -item.quantity } // Decrease stock by the quantity ordered
-          });
-      }
-
-      res.status(201).json({ success: true, message: "Order placed successfully!", orderID });
-
-  } catch (error) {
-      console.error("Error placing order:", error);
-      res.status(500).json({ success: false, message: "Failed to place order" });
-  }
+// ✅ Keep Only Filename in Storage
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, file.originalname); // ✅ Store only filename
+    },
 });
 
-// Route to render Order Confirmation Page
-router.get("/order-confirmation", (req, res) => {
-  res.render("order-confirmation", req.query);
-});
-router.get("/checkout",isAuthenticated, async (req, res) => {
-  console.log("Session User Data:", req.session.user);
+const upload = multer({ storage });
 
-  if (!req.session.user) {
-      return res.status(401).json({ error: "Unauthorized: Please log in first" });
-  }
+// 🏠 Home Page - Display Product & User Stats
 
-  try {
-      // Find the user's cart
-      const cart = await Cart.findOne({ userId: req.session.user.id });
-
-      if (!cart) {
-          return res.render("checkout", { user: req.session.user, cartItems: [], totalPrice: 0 });
-      }
-
-      // Fetch cart items with full product details
-      const cartItems = await CartItem.find({ cartId: cart._id })
-          .populate("productID") // Ensure product details are fetched
-          .exec();
-
-      // If the product is missing, handle it properly
-      cartItems.forEach(item => {
-          if (!item.productID) {
-              item.name = "Product not found";
-              item.price = "Not available";
-          }
-      });
-
-      // Calculate total price (excluding missing products)
-      let totalPrice = cartItems.reduce((sum, item) => {
-          return sum + (item.productID ? item.price * item.quantity : 0);
-      }, 0);
-
-      res.render("checkout", { user: req.session.user, cartItems, totalPrice });
-  } catch (err) {
-      console.error("Error fetching cart:", err);
-      res.status(500).json({ error: "An error occurred while fetching the cart." });
-  }
-});
-
-// Uniform Route (Ensure user is logged in)
-router.get("/uniforms", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Uniforms" category
-    const category = await Category.findOne({ name: "uniforms" });
-
-    if (!category) {
-      console.error("Category 'Uniforms' not found.");
-      return res.status(404).send("Category 'Uniforms' not found.");
-    }
-
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Uniforms' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Uniforms' category.`);
-    }
-
-    res.render("uniforms", { products });
-  } catch (err) {
-    console.error("Error fetching uniforms:", err);
-    res.status(500).send("An error occurred while fetching uniforms.");
-  }
-});
-router.get("/pants", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Pants" category
-    const category = await Category.findOne({ name: "pants" });
-
-    if (!category) {
-      console.error("Category 'Pants' not found.");
-      return res.status(404).send("Category 'Pants' not found.");
-    }
-
-    // Find all products under the Pants category
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Pants' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Pants' category.`);
-    }
-
-    res.render("pants", { products });
-  } catch (err) {
-    console.error("Error fetching pants:", err);
-    res.status(500).send("An error occurred while fetching pants.");
-  }
-});
-
-router.get("/saree", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Sarees" category
-    const category = await Category.findOne({ name: "saree" });
-
-    if (!category) {
-      console.error("Category 'Sarees' not found.");
-      return res.status(404).send("Category 'Sarees' not found.");
-    }
-
-    // Find all products under the Sarees category
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Sarees' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Sarees' category.`);
-    }
-
-    res.render("sarees", { products });
-  } catch (err) {
-    console.error("Error fetching sarees:", err);
-    res.status(500).send("An error occurred while fetching sarees.");
-  }
-});
-router.get("/bags", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Bags" category
-    const category = await Category.findOne({ name: "bags" });
-
-    if (!category) {
-      console.error("Category 'Bags' not found.");
-      return res.status(404).send("Category 'Bags' not found.");
-    }
-
-    // Find all products under the Bags category
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Bags' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Bags' category.`);
-    }
-
-    res.render("bags", { products });
-  } catch (err) {
-    console.error("Error fetching bags:", err);
-    res.status(500).send("An error occurred while fetching bags.");
-  }
-});
-router.get("/kurti", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Kurti" category
-    const category = await Category.findOne({ name: "kurti" });
-
-    if (!category) {
-      console.error("Category 'Kurti' not found.");
-      return res.status(404).send("Category 'Kurti' not found.");
-    }
-
-    // Find all products under the Kurti category
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Kurti' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Kurti' category.`);
-    }
-
-    res.render("kurti", { products });
-  } catch (err) {
-    console.error("Error fetching kurtis:", err);
-    res.status(500).send("An error occurred while fetching kurtis.");
-  }
-});
-router.get("/bedsheets", async (req, res) => {
-  // Check if the user is logged in
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect to login if not logged in
-  }
-
-  try {
-    // Find the "Bedsheets" category
-    const category = await Category.findOne({ name: "bedsheets" });
-
-    if (!category) {
-      console.error("Category 'Bedsheets' not found.");
-      return res.status(404).send("Category 'Bedsheets' not found.");
-    }
-
-    // Find all products under the Bedsheets category
-    const products = await Product.find({ category: category._id });
-
-    if (!products || products.length === 0) {
-      console.log("No products found for the 'Bedsheets' category.");
-    } else {
-      console.log(`Fetched ${products.length} products for 'Bedsheets' category.`);
-    }
-
-    res.render("bedsheets", { products });
-  } catch (err) {
-    console.error("Error fetching bedsheets:", err);
-    res.status(500).send("An error occurred while fetching bedsheets.");
-  }
-});
-
-
-
-
-// Cart Route (Ensure user is logged in)
-router.get("/cart", isAuthenticated, async (req, res) => {
-  try {
-    console.log("Session Data:", req.session); // Debug session
-
-    if (!req.session.user) {
-      console.log("User  not logged in.");
-      return res.render("cart", { cart: [] });
-    }
-
-    const userId = req.session.user.id; // Access the user ID from the session
-    console.log("User  ID:", userId);
-
-    // Find the user's cart
-    const cart = await Cart.findOne({ userId });
-    console.log("Cart Found:", cart);
-
-    if (!cart) {
-      console.log("Cart is empty.");
-      return res.render("cart", { cart: [] });
-    }
-
-    // Get all cart items and populate product data
-    const cartItems = await CartItem.find({ cartId: cart._id })
-      .populate('productID') // Populate the productID field
-      .lean(); // Convert to plain JavaScript objects
-    console.log("Cart Items:", cartItems);
-
-    res.render("cart", { cart: cartItems });
-  } catch (error) {
-    console.error("Error fetching cart:", error);
-    res.status(500).send("Server Error");
-  }
-});
-
-
-
-// Wishlist Route (Ensure user is logged in)
-router.get("/wishlist", isAuthenticated, async (req, res) => {
-  try {
-    console.log("Session Data:", req.session); // Debug session
-
-    if (!req.session.user) {
-      console.log("User not logged in.");
-      return res.render("wishlist", { wishlist: [] });
-    }
-
-    const userId = req.session.user.id; // Access the user ID from the session
-    console.log("User ID:", userId);
-
-    // Find the user's wishlist
-    const wishlist = await Wishlist.findOne({ userId });
-    console.log("Wishlist Found:", wishlist);
-
-    if (!wishlist) {
-      console.log("Wishlist is empty.");
-      return res.render("wishlist", { wishlist: [] });
-    }
-
-    // Get all wishlist items and populate product data
-    const wishlistItems = await WishlistItem.find({ wishlistId: wishlist._id })
-      .populate('productId') // Populate the productID field
-      .lean(); // Convert to plain JavaScript objects
-    console.log("Wishlist Items:", wishlistItems);
-
-    res.render("wishlist", { wishlist: wishlistItems });
-  } catch (error) {
-    console.error("Error fetching wishlist:", error);
-    res.status(500).send("Server Error");
-  }
-});
-router.get('/product-details', async (req, res) => {
-  try {
-      const productId = req.query.id; // Get the product ID from the query parameter
-      const product = await Product.findById(productId); // Fetch the product from the database
-
-      if (!product) {
-          return res.status(404).send('Product not found');
-      }
-
-      // Render the product-details.ejs template and pass the product data
-      res.render('product-details', { product });
-  } catch (error) {
-      console.error('Error fetching product details:', error);
-      res.status(500).send('Internal Server Error');
-  }
-});
-router.get("/api/cart", async (req, res) => {
-  try {
-      const userId = req.session.userId; // Get logged-in user ID
-      const cartItems = await CartItem.find({ user: userId }).populate("product");
-      res.json(cartItems);
-  } catch (error) {
-      res.status(500).json({ error: "Failed to fetch cart items" });
-  }
-});
-
-
-// Get User Route (Check if user is logged in)
-router.get("/getUser", (req, res) => {
-  console.log("Checking session:", req.session); // Debugging session state
-
-  if (req.session.user) {
-    res.json({ loggedIn: true, user: req.session.user });
-  } else {
-    res.status(401).json({ loggedIn: false, message: "User not logged in" });
-  }
-});
-router.get("/search", async (req, res) => {
-  const query = req.query.query;
-
-  if (!query) {
-    return res.json([]);
-  }
-
-  try {
-    const results = await Product.find({
-      name: { $regex: query, $options: "i" }, // Case-insensitive search
-    }).limit(10);
-
-    res.json(results);
-  } catch (error) {
-    console.error("Search error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-router.post("/save-address",isAuthenticated, async (req, res) => {
-  try {
-    const userId = req.session.user?.id;
-      const { name, address, pincode, city, state } = req.body;
-
-      if (!name || !address || !pincode || !city || !state) {
-          return res.status(400).json({ error: "All fields are required" });
-      }
-
-      await User.findByIdAndUpdate(userId, {
-          address: { name, address, pincode, city, state },
-      });
-
-      res.json({ success: true, message: "Address updated successfully" });
-  } catch (error) {
-      console.error("Error saving address:", error);
-      res.status(500).json({ error: "Failed to save address" });
-  }
-});
-
-
-router.get("/get-saved-address", isAuthenticated, async (req, res) => {
-  try {
-      const userId = req.session.user?.id;
-      if (!userId) {
-          return res.json({ savedAddress: null });
-      }
-
-      console.log("Extracted User ID:", userId);
-
-      // Convert userId to ObjectId if needed
-      const objectUserId = new mongoose.Types.ObjectId(userId);
-
-      // Find the latest order from the user
-      const latestOrder = await Order.findOne({ userId: objectUserId }).sort({ createdAt: -1 });
-
-      if (latestOrder) {
-          console.log("Found saved address:", latestOrder.address);
-          return res.json({
-              savedAddress: {
-                  name: latestOrder.name,
-                  address: latestOrder.address,
-                  pincode: latestOrder.pincode,
-                  city: latestOrder.city,
-                  state: latestOrder.state
-              }
-          });
-      } else {
-          console.log("First-time user, no address found.");
-          return res.json({ savedAddress: null });
-      }
-  } catch (error) {
-      console.error("Error fetching address:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-router.get("/settings", (req, res) => {
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect if not logged in
-  }
-  
-  res.render("settings", { user: req.session.user });
-});
-router.get("/about", (req, res) => {
-  if (!req.session.user) {
-    return res.redirect("/login"); // Redirect if not logged in
-  }
-  
-  res.render("about", { user: req.session.user });
-});
-// Get all orders for the logged-in user
-
-// Route to render the EJS page
-router.get("/myorders", isAuthenticated, (req, res) => {
-  res.render("myorders"); // Render the EJS template
-});
-
-// Route to fetch orders as JSON
-router.get("/api/myorders", isAuthenticated, async (req, res) => {
-  try {
-      console.log("Fetching orders for user:", req.session.user?.id); // Debugging log
-      const userId = req.session.user?.id;
-      if (!userId) {
-          console.log("User  ID not found.");
-          return res.status(400).json({ message: "User  ID not found" });
-      }
-
-      const orders = await Order.find({ userId }).populate("cartItems.productID");
-      console.log("Orders fetched:", orders); // Check if data is fetched
-
-      res.json({ orders }); 
-  } catch (error) {
-      console.error("Error fetching orders:", error);
-      res.status(500).json({ message: "Error fetching orders", error: error.message });
-  }
-});
-
-
-// Your authentication middleware
-
-// Get notifications for a user
-router.get('/api/notifications', isAuthenticated, async (req, res) => {
+router.get("/", async (req, res) => {
     try {
-        const notifications = await Notification.find({ userId: req.session.user.id }).sort({ timestamp: -1 });
-        res.json(notifications);
+        // ✅ Fetch counts
+        const productCount = await Product.countDocuments();
+        const userCount = await User.countDocuments();
+        const orderCount = await Order.countDocuments();
+        
+
+        const totalSalesData = await Order.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: "$totalAmount" } // ✅ Summing totalAmount directly
+                }
+            }
+        ]);
+        
+
+        
+        const totalSales = totalSalesData.length > 0 ? totalSalesData[0].total : 0;  // ✅ Ensures totalSales isn't undefined
+        
+
+        // ✅ Fetch user statistics for chart
+        const userStats = await User.aggregate([
+            {
+                $group: {
+                    _id: { $month: "$createdAt" }, // Group users by month
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        // ✅ Fetch product category statistics for pie chart (with category names)
+        const categoryStats = await Product.aggregate([
+            {
+                $lookup: {  // Fetch category names from Category collection
+                    from: "categories",
+                    localField: "category",
+                    foreignField: "_id",
+                    as: "categoryDetails"
+                }
+            },
+            { $unwind: "$categoryDetails" },  // Extract category name
+            {
+                $group: {
+                    _id: "$categoryDetails.name",  // ✅ Use category name instead of ID
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const salesStats = await Order.aggregate([
+            {
+                $group: {
+                    _id: { $month: "$createdAt" },  // ✅ Group by month
+                    sales: { $sum: "$totalAmount" }  // ✅ Sum total sales for each month
+                }
+            },
+            { $sort: { _id: 1 } }  // ✅ Sort by month (ascending)
+        ]);
+        
+        
+
+        res.render("index", {
+            productCount,
+            userCount,
+            orderCount,
+            totalSales,
+            userStats: JSON.stringify(userStats),
+            categoryStats: JSON.stringify(categoryStats),
+            salesStats: JSON.stringify(salesStats),
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Server Error");
+    }
+});
+
+
+// 📌 Category Routes
+router.get("/insert-category", (req, res) => res.render("insert2"));
+
+router.post("/insert-category", upload.single("category-image"), async (req, res) => {
+    try {
+        const { "category-name": name } = req.body;
+        if (!name) return res.status(400).json({ message: "Category name is required." });
+
+        const image = req.file ? req.file.filename : ""; // ✅ Store only filename
+
+        const category = new Category({ name, image });
+        await category.save();
+
+        res.status(201).json({ message: "Category inserted successfully!" });
     } catch (error) {
-        console.error("Error fetching notifications:", error);
-        res.status(500).json({ message: 'Internal server error' });
+        console.error("Error inserting category:", error);
+        res.status(500).json({ message: "An error occurred while inserting the category." });
     }
 });
 
-// Mark notification as read
-router.put('/api/notifications/:id/read', isAuthenticated, async (req, res) => {
+router.get("/view-category", async (req, res) => {
     try {
-        const notification = await Notification.findById(req.params.id);
-        if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+        const categories = await Category.find();
+        res.render("view2", { categories });
+    } catch (error) {
+        console.error("Error fetching categories:", error);
+        res.status(500).send("Error fetching categories");
+    }
+});
+
+// 📌 Product Routes
+router.get("/insert-product", (req, res) => res.render("insert1"));
+
+router.post("/insert-product", upload.array("product-images"), async (req, res) => {
+    try {
+        const {
+            "product-name": name,
+            "product-category": categoryName,
+            "product-price": price,
+            "product-description": description,
+            "product-stock":stock,
+        } = req.body;
+
+        if (!name || !categoryName || !price || !description||!stock) {
+            return res.status(400).json({ message: "All fields are required." });
         }
-        notification.read = true;
-        await notification.save();
-        res.json({ message: 'Notification marked as read' });
+
+        let category = await Category.findOne({ name: categoryName });
+        if (!category) {
+            category = new Category({ name: categoryName });
+            await category.save();
+        }
+
+        const images = req.files.map(file => file.filename); // ✅ Store only filename
+
+        const product = new Product({ name, price, images, category: category._id, description,stock });
+
+        await product.save();
+        res.status(201).json({ message: "Product inserted successfully!" });
     } catch (error) {
-        console.error("Error marking notification as read:", error);
+        console.error("Error inserting product:", error);
+        res.status(500).json({ message: "An error occurred while inserting the product." });
+    }
+});
+
+// ✅ Serve Static Files
+router.use("/images", express.static(uploadDir));
+
+router.get('/view-products', async (req, res) => {
+    try {
+        const categories = await Category.find();
+        let filter = {};
+        if (req.query.category) {
+            filter.category = req.query.category; // Filter by selected category
+        }
+
+        const products = await Product.find(filter).populate('category');
+        res.render('view1', { products, categories, selectedCategory: req.query.category || "" });
+    } catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+
+router.post("/delete-product/:id", async (req, res) => {
+    try {
+        await Product.findByIdAndDelete(req.params.id);
+        res.redirect("/view-products");
+    } catch (error) {
+        console.error("Error deleting product:", error);
+        res.status(500).send("Error deleting product");
+    }
+});
+
+router.get("/edit-product/:id", async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id).populate("category");
+        res.render("edit-product", { product });
+    } catch (error) {
+        console.error("Error fetching product for edit:", error);
+        res.status(500).send("Error fetching product for edit");
+    }
+});
+
+// 👥 Customer Routes
+router.get("/view-customers", async (req, res) => {
+    try {
+        const users = await User.find();
+        res.render("view3", { users });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).send("Error fetching users");
+    }
+});
+
+router.delete("/delete-customer/:id", async (req, res) => {
+    try {
+        await User.findByIdAndDelete(req.params.id);
+        res.status(200).send("Customer deleted successfully");
+    } catch (error) {
+        console.error("Error deleting customer:", error);
+        res.status(500).send("Error deleting customer");
+    }
+});
+router.get('/admin/orders', async (req, res) => {
+    try {
+        // You can fetch orders here if you want to pass them to the view
+        const orders = await Order.find().sort({ createdAt: -1 });
+        res.render('view4', { orders }); // Pass the orders to the view if needed
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send("Failed to fetch orders");
+    }
+});
+router.get('/admin/api/orders', async (req, res) => {
+    try {
+        const orders = await Order.find()
+            .populate({ path: "userId", select: "username email" })  // 🔹 More explicit populate
+            .populate({ path: "cartItems.productID", select: "name price" })
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, orders });
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch orders" });
+    }
+});
+
+// Route to delete an order
+router.delete('/admin/orders/:id', async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        await Order.findByIdAndDelete(orderId);
+        res.status(200).json({ success: true, message: "Order deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting order:", error);
+        res.status(500).json({ success: false, message: "Failed to delete order" });
+    }
+});
+router.put('/admin/orders/:orderId/status', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { status } = req.body;
+
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        order.status = status;
+        await order.save();
+
+        // Create a notification for the user
+        const notification = new Notification({
+            userId: order.userId,
+            message: `Your order ${order.orderID} status has been updated to ${status}`
+        });
+        await notification.save();
+
+        res.json({ message: 'Order status updated successfully', orderID: order.orderID, userId: order.userId });
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+router.get('/admin/custom-orders', async (req, res) => {
+    try {
+        const customOrders = await CustomOrder.find().sort({ createdAt: -1 });
+        res.render('custom-orders', { customOrders }); // Pass custom orders to the view
+    } catch (error) {
+        console.error("Error fetching custom orders:", error);
+        res.status(500).send("Failed to fetch custom orders");
+    }
+});
+
+// 📌 API route to fetch custom orders as JSON
+router.get('/admin/api/custom-orders', async (req, res) => {
+    try {
+        const customOrders = await CustomOrder.find()
+            .populate({ path: "userId", select: "username email" })  
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, customOrders });
+    } catch (error) {
+        console.error("Error fetching custom orders:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch custom orders" });
+    }
+});
+
+// 📌 Route to delete a custom order
+router.delete('/admin/custom-orders/:id', async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        await CustomOrder.findByIdAndDelete(orderId);
+        res.status(200).json({ success: true, message: "Custom order deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting custom order:", error);
+        res.status(500).json({ success: false, message: "Failed to delete custom order" });
+    }
+});
+
+// 📌 Route to update the status of a custom order
+router.put('/admin/custom-orders/:orderId/status', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { status } = req.body;
+
+        const customOrder = await CustomOrder.findById(orderId);
+        if (!customOrder) {
+            return res.status(404).json({ message: 'Custom order not found' });
+        }
+
+        customOrder.status = status;
+        await customOrder.save();
+
+        // 📌 Create a notification for the user
+        const notification = new Notification({
+            userId: customOrder.userId,
+            message: `Your custom order ${customOrder.orderID} status has been updated to ${status}`
+        });
+        await notification.save();
+
+        res.json({ message: 'Custom order status updated successfully', orderID: customOrder.orderID, userId: customOrder.userId });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 
 
 

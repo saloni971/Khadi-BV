@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const connection = mongoose.connect('mongodb://0.0.0.0/backend')
+const connection = mongoose.connect('mongodb://127.0.0.1/backend')
     .then(() => {
         console.log("Connected to the database");
     })
